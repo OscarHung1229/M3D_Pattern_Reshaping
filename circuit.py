@@ -1,14 +1,74 @@
 import sys
 
+#Global matrix for signal propagation
+NotMap = [1, 0, 2, 4, 3]
+AndMap = [
+	[0, 0, 0, 0, 0],
+	[0, 1, 2, 3, 4],
+	[0, 2, 2, 2, 0],
+	[0, 3, 2, 3, 0],
+	[0, 4, 0, 0, 4]
+] 
+OrMap = [
+	[0, 1, 2, 3, 4],
+	[1, 1, 1, 1, 1],
+	[2, 1, 2, 1, 2],
+	[3, 1, 1, 3, 1],
+	[4, 1, 2 ,1 ,4]
+]
+
+XorMap = [
+	[0, 1, 2, 3, 4],
+	[1, 0, 2, 4, 3],
+	[2, 2, 2, 2, 2],
+	[3, 4, 2, 0, 1],
+	[4, 3, 2, 1, 0]
+]
+
+def evalNot(v):
+	return NotMap[v]
+
+def evalAnd(v1, v2):
+	return AndMap[v1][v2]
+
+def evalOr(v1, v2):
+	return OrMap[v1][v2]
+
+def evalXor(v1, v2):
+	return XorMap[v1][v2]
+
+
+
 class Gate:
 	def __init__(self, gtype, name):
 		self.gtype = gtype			#Gate type
 	 	self.level = -1					#Level in the circuit
 	 	self.name = name				#Gate name
 	 	self.pins = {}					#Input/Output pins
-	 	
+		
 	def add_pins(self, ptype, wire):
 		self.pins[ptype] = wire
+	
+
+	def eval(self):
+		value = -1
+		if "AND" in self.gtype:
+			for p in self.pins:
+				pin = self.pins[p]
+				if "Z" in pin.name:
+					continue
+				if value == -1:
+					value = pin.value
+				else:
+					value = AndMap[value][pin.value]
+			if "NAND" in self.gtype:
+				self.pins["ZN"].set_value(NotMap[value])
+			else 
+				self.pins["ZN"].set_value(value)
+			
+				
+		
+
 	 	
 class Wire:
 	def __init__(self, wtype, name):
