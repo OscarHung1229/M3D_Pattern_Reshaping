@@ -1,4 +1,5 @@
 import sys
+from operator import itemgetter	
 
 #Global matrix for signal propagation
 NotMap = [1, 0, 2, 4, 3]
@@ -25,19 +26,6 @@ XorMap = [
 	[4, 3, 2, 1, 0]
 ]
 
-def evalNot(v):
-	return NotMap[v]
-
-def evalAnd(v1, v2):
-	return AndMap[v1][v2]
-
-def evalOr(v1, v2):
-	return OrMap[v1][v2]
-
-def evalXor(v1, v2):
-	return XorMap[v1][v2]
-
-
 
 class Gate:
 	def __init__(self, gtype, name):
@@ -48,6 +36,8 @@ class Gate:
 		
 	def add_pins(self, ptype, wire):
 		self.pins[ptype] = wire
+	def set_level(self,l):
+		self.level = l
 	
 
 	def eval(self):
@@ -63,20 +53,139 @@ class Gate:
 					value = AndMap[value][pin.value]
 			if "NAND" in self.gtype:
 				self.pins["ZN"].set_value(NotMap[value])
-			else 
+			else: 
 				self.pins["ZN"].set_value(value)
-			
-				
-		
 
+		elif self.gtype.startswith("OR") or self.gtype.startswith("NOR"):
+			for p in self.pins:
+				pin = self.pins[p]
+				if "Z" in pin.name:
+					continue
+				if value == -1:
+					value = pin.value
+				else:
+					value = OrMap[value][pin.value]
+			if "NOR" in self.gtype:
+				self.pins["ZN"].set_value(NotMap[value])
+			else: 
+				self.pins["ZN"].set_value(value)
+		
+		elif self.gtype.startswith("XOR"):
+			self.pins["Z"].set_value(XorMap[self.pins["A"].value][self.pins["B"].value])
+			
+		elif self.gtype.startswith("XNOR"):
+			self.pins["ZN"].set_value(NotMap[XorMap[self.pins["A"].value][self.pins["B"].value]])
+
+		elif self.gtype.startswith("AOI21_"):
+			value = AndMap[self.pins["B1"].value][self.pins["B2"].value]
+			value = OrMap[self.pins["A"].value][value]
+			self.pins["ZN"].set_value(NotMap[value])
+
+		elif self.gtype.startswith("AOI22_"):
+			v1 = AndMap[self.pins["B1"].value][self.pins["B2"].value]
+			v2 = AndMap[self.pins["A1"].value][self.pins["A2"].value]
+			value = OrMap[v1][v2]
+			self.pins["ZN"].set_value(NotMap[value])
+			
+		elif self.gtype.startswith("AOI211_"):
+			value = AndMap[self.pins["C1"].value][self.pins["C2"].value]
+			value = OrMap[self.pins["B"].value][value]
+			value = OrMap[self.pins["A"].value][value]
+			self.pins["ZN"].set_value(NotMap[value])
+
+		elif self.gtype.startswith("AOI221_"):
+			v1 = AndMap[self.pins["C1"].value][self.pins["C2"].value]
+			v2 = AndMap[self.pins["B1"].value][self.pins["B2"].value]
+			value = OrMap[self.pins["A"].value][v1]
+			value = OrMap[v2][value]
+			self.pins["ZN"].set_value(NotMap[value])
+
+		elif self.gtype.startswith("AOI222_"):
+			v1 = AndMap[self.pins["C1"].value][self.pins["C2"].value]
+			v2 = AndMap[self.pins["B1"].value][self.pins["B2"].value]
+			v3 = AndMap[self.pins["A1"].value][self.pins["A2"].value]
+			value = OrMap[v1][v2]
+			value = OrMap[v3][value]
+			self.pins["ZN"].set_value(NotMap[value])
+				
+		elif self.gtype.startswith("OAI21_"):
+			v1 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
+			value = AndMap[v1][self.pins["A"].value]	
+			self.pins["ZN"].set_value(NotMap[value])
+
+		elif self.gtype.startswith("OAI22_"):
+			v1 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
+			v2 = OrMap[self.pins["A1"].value][self.pins["A2"].value]
+			value = AndMap[v1][v2]
+			self.pins["ZN"].set_value(NotMap[value])
+
+		elif self.gtype.startswith("OAI211_"):
+			v1 = OrMap[self.pins["C1"].value][self.pins["C2"].value]
+			value = AndMap[v1][self.pins["A"].value]	
+			value = AndMap[value][self.pins["B"].value]	
+			self.pins["ZN"].set_value(NotMap[value])
+
+		elif self.gtype.startswith("OAI221_"):
+			v1 = OrMap[self.pins["C1"].value][self.pins["C2"].value]
+			v2 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
+			value = AndMap[v1][self.pins["A"].value]	
+			value = AndMap[value][v2]
+			self.pins["ZN"].set_value(NotMap[value])
+
+		elif self.gtype.startswith("OAI222_"):
+			v1 = OrMap[self.pins["C1"].value][self.pins["C2"].value]
+			v2 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
+			v3 = OrMap[self.pins["A1"].value][self.pins["A2"].value]
+			value = AndMap[v1][v2]
+			value = AndMap[value][v3]
+			self.pins["ZN"].set_value(NotMap[value])
+
+		elif self.gtype.startswith("OAI33_"):
+			v1 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
+			v2 = OrMap[self.pins["B3"]][v1]
+			v3 = OrMap[self.pins["A1"].value][self.pins["A2"].value]
+			v4 = OrMap[self.pins["A3"]][v3]
+			value = AndMap[v2][v4]
+			self.pins["ZN"].set_value(NotMap[value])
+
+		elif self.gtype.startswith("MUX"):
+			v1 = AndMap[self.pins["A"].value][NotMap[self.pins["S"].value]]
+			v2 = AndMap[self.pins["B"].value][self.pins["S"].value]
+			self.pins["Z"].set_value(OrMap[v1][v2])
+
+		elif self.gtype.startswith("FA"):
+			v1 = XorMap[self.pins["A"].value][self.pins["B"].value]
+			self.pins["S"].set_value(XorMap[v1][self.pins["CI"].value])
+			v2 = OrMap[self.pins["A"].value][self.pins["B"].value]
+			v3 = AndMap[v2][self.pins["CI"].value]
+			v4 = AndMap[self.pins["A"].value][self.pins["B"].value]
+			self.pins["CO"].set_value(OrMap[v3][v4])
+
+		elif "DFF" in self.gtype:
+			self.pins["Q"].set_value(self.pins["D"].value)
+			if "QN" in self.pins:
+				self.pins["QN"].set_value(NotMap[self.pins["D"].value])
+
+		else:
+			self.pins["Z"].set_value(self.pins["A"].value)
+		
 	 	
 class Wire:
 	def __init__(self, wtype, name):
 		self.wtype = wtype			#Wire type
-		self.value = 0					#Signal on this wire
+		self.value = -1					#Signal on this wire
 		self.name = name				#Wire name
  		self.fanin = 0					#Fanin gate
 		self.fanout = []				#Fanout gates	
+	
+	def connect(self, gate, direction):
+		if direction == "IN":
+			self.fanin = gate
+		else:
+			self.fanout.append(gate)
+	
+	def set_value(self, v):
+		self.value = v
 
 class Circuit:
 	def __init__(self):
@@ -84,11 +193,14 @@ class Circuit:
 		self.Po = {}						#Primary Output
 		self.Wire = {}					#Wires
 		self.Gate = {}					#Standard Cell Gates
+		self.sorted_Gate = {}		#Sorted gates by their levels
+		self.scanchains = []		#Scanchains
+		self.maxlevel = -1			#Maxlevel
 	
 	def debug(self):
-		for g in self.Gate:
-			gate = self.Gate[g]
-			print(gate.gtype + " " +  gate.name + " " + str(len(gate.pins)))
+		for g in self.sorted_Gate:
+			gate = self.sorted_Gate[g]
+			print(gate.gtype + " " +  gate.name + " " + str(gate.level))
 
 	#Verilog Parser
 	def parseVerilog(self, infile):
@@ -159,7 +271,9 @@ class Circuit:
 			gname = "Dummy_" + inwire
 			newGate = Gate("Dummy", gname)
 			newGate.add_pins("A", self.Wire[inwire])
+			self.Wire[inwire].connect(newGate, "OUT")
 			newGate.add_pins("Z", self.Wire[outwire])
+			self.Wire[inwire].connect(newGate, "IN")
 			self.Gate[gname] = newGate
 			
 		i = 0
@@ -187,11 +301,93 @@ class Circuit:
 				ptype = p[idx1+1:idx2].strip()
 				wire = p[idx2+1:idx3].strip()
 				newGate.add_pins(ptype, self.Wire[wire])
+				if "Z" in ptype:
+					self.Wire[wire].connect(newGate, "IN")
+				elif "CO" in ptype:
+					self.Wire[wire].connect(newGate, "IN")
+				elif "Q" in ptype:
+					self.Wire[wire].connect(newGate, "IN")
+				elif "S" in ptype:
+					self.Wire[wire].connect(newGate, "IN")
+					
+				else:
+					self.Wire[wire].connect(newGate, "OUT")
+					
 
 			self.Gate[name] = newGate
 			l = ""
+		
+		f.close()
 				
+	def levelize(self):
+		for p in self.Pi:
+			self.levelize_dfs(self.Pi[p], 0)
+		for sc in self.scanchains:
+			for gate in sc:
+				gate.set_level(0)
+				self.levelize_dfs(gate.pins["Q"], 1)
+				if "QN" in gate.pins:
+					self.levelize_dfs(gate.pins["QN"], 1)
+
+		print("Max level:" + str(self.maxlevel))
+		
+		self.sorted_Gate = [[] for x in range(self.maxlevel+1)]
+		for g in self.Gate:
+			gate = self.Gate[g]
+			l = gate.level
+			self.sorted_Gate[l].append(gate)
+
+		
+	
+	def levelize_dfs(self, wire, level):
+		for gate in wire.fanout:
+			if "DFF" in gate.gtype:
+				continue
+			if gate.level < level:
+				gate.set_level(level)
+				self.maxlevel = max(level, self.maxlevel)
+				if "Z" in gate.pins:
+					self.levelize_dfs(gate.pins["Z"], level+1)
+				if "ZN" in gate.pins:
+					self.levelize_dfs(gate.pins["ZN"], level+1)
+				if "CO" in gate.pins:
+					self.levelize_dfs(gate.pins["CO"], level+1)
+				if "S" in gate.pins:
+					self.levelize_dfs(gate.pins["S"], level+1)
+	
+	def parseScanChain(self, infile):
+		f = open(infile, "r")
+		inchain = False
+		chain = []
+		for line in f:
+			if "PatternBurst" in line:
+				break
+
+			if not inchain:
+				if "ScanCells" not in line:
+					continue
+
+			inchain = True
+			for words in line.split("\""):
+				if "." not in words:
+					continue
+				idx1 = words.find(".")+1
+				idx2 = words.find(".", idx1+1)
+				name = words[idx1:idx2]
+				chain.append(self.Gate[name])
+			
+			if ";" in line:
+				inchain = False
+				self.scanchains.append(chain)
+				chain = []
+
+		f.close()
+		self.levelize()
+
+
+			
 
 cir = Circuit()
 cir.parseVerilog(sys.argv[1])
-cir.debug()
+cir.parseScanChain(sys.argv[2])
+#cir.debug()
