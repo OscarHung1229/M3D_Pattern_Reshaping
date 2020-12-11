@@ -189,8 +189,8 @@ class Wire:
 
 class Circuit:
 	def __init__(self):
-		self.Pi = {} 						#Primary Input
-		self.Po = {}						#Primary Output
+		self.Pi = [] 						#Primary Input
+		self.Po = []						#Primary Output
 		self.Wire = {}					#Wires
 		self.Gate = {}					#Standard Cell Gates
 		self.sorted_Gate = {}		#Sorted gates by their levels
@@ -198,9 +198,10 @@ class Circuit:
 		self.maxlevel = -1			#Maxlevel
 	
 	def debug(self):
-		for g in self.sorted_Gate:
-			gate = self.sorted_Gate[g]
-			print(gate.gtype + " " +  gate.name + " " + str(gate.level))
+		for g in self.Gate:
+			gate = self.Gate[g]
+			if gate.level == -1:
+				print(gate.gtype + " " +  gate.name + " " + str(gate.level))
 
 	#Verilog Parser
 	def parseVerilog(self, infile):
@@ -221,7 +222,6 @@ class Circuit:
 					continue
 				name = w.strip()
 				newWire = Wire("PI", name)
-				self.Pi[name] = newWire
 				self.Wire[name] = newWire
 			
 			if ";" in line:
@@ -238,7 +238,6 @@ class Circuit:
 					continue
 				name = w.strip()
 				newWire = Wire("PO", name)
-				self.Po[name] = newWire
 				self.Wire[name] = newWire
 			
 			if ";" in line:
@@ -321,7 +320,7 @@ class Circuit:
 				
 	def levelize(self):
 		for p in self.Pi:
-			self.levelize_dfs(self.Pi[p], 0)
+			self.levelize_dfs(p, 0)
 		for sc in self.scanchains:
 			for gate in sc:
 				gate.set_level(0)
@@ -355,10 +354,39 @@ class Circuit:
 				if "S" in gate.pins:
 					self.levelize_dfs(gate.pins["S"], level+1)
 	
-	def parseScanChain(self, infile):
+	def parseSTIL(self, infile):
 		f = open(infile, "r")
-		inchain = False
 		chain = []
+		
+		for line in f:
+			if "SignalGroups" in line:
+				break
+
+		#PI
+		for line in f:
+			words = line.split("\"")
+			for name in words:
+				if name in self.Wire:
+					self.Pi.append(self.Wire[name])	
+			if ";" in line:
+				break
+
+		for i in range(2):
+			for line in f:
+				if ";" in line:
+					break
+
+		#PO
+		for line in f:
+			words = line.split("\"")
+			for name in words:
+				if name in self.Wire:
+					self.Po.append(self.Wire[name])	
+			if ";" in line:
+				break
+
+		#Scan Chains
+		inchain = False
 		for line in f:
 			if "PatternBurst" in line:
 				break
@@ -380,14 +408,157 @@ class Circuit:
 				inchain = False
 				self.scanchains.append(chain)
 				chain = []
-
-		f.close()
+		
+		#Levelization after parsing scan chains
 		self.levelize()
 
+		for line in f:
+			if "pattern 0" in line:
+				break
+
+
+		#Patterns
+		finalpattern = False
+		cnt = 0
+		while not finalpattern:
+			cnt += 1
+			step = "load"
+			si = []
+			launch = []
+			capture = []
+			so = []
+			
+			l = ""
+			count = 0
+			
+			for line in f:
+				if "Ann" in line:
+					continue
+				elif "Call" in line:
+					if "launch" in line:
+					 	step = "launch"
+					elif "capture" in line:
+					 	step = "capture"
+					elif (step == "capture") and ("load" in line):
+					 	step = "unload"
+					continue
+
+				l += line.strip()
+				if ";" not in line:
+					continue
+				else:
+					idx1 = l.find("=")+1
+					idx2 = l.find(";")
+					subline = l[idx1:idx2]
+					if step == "load":
+						si.append(subline)
+					elif step == "launch":
+						launch.append(subline)
+					elif step == "capture":
+						capture.append(subline)
+					elif step == "unload":
+						launch.append(subline)
+						count += 1
+						if count == len(self.scanchains):
+							break
+					l = ""
+
+			if cnt == 2:
+				self.test(si, launch, capture, so)
+				break
+
+
+
+		f.close()
+
+	def evaluate(self):
+		level0 = True
+		for gates in self.sorted_Gate:
+			if level0:
+				level0 = False
+				continue
+			
+			for g in gates:
+				g.eval
+
+		for g in self.sorted_Gate[0]:
+			g.eval
+			
+
+	def test(self, si, launch, capture, so):
+		if len(launch) == 0:
+		 return True
+
+		#Assign scan chains
+		for i in range(len(si)):
+			scanvalue = si[i][::-1]
+			scanchain = self.scanchains[i]
+			for j in range(len(scanvalue)):
+				v = int(scanvalue[j])
+				scanchain[j].pins["Q"].set_value(v)
+				if "QN" in scanchain[j].pins:
+					scanchain[j].pins["Q"].set_value(1-v)
+		
+		#Launch
+		pulse = False
+		reset = False
+		for i in range(len(launch[0])):
+			v = 0
+			if launch[0][i] == "P":
+				v = 1
+				if self.Pi[i].name == "clock":
+					pulse = True
+				else:
+					reset = True
+			elif launch[0][i] == "1":
+				v = 1
+			self.Pi[i].set_value(v)
+
+		#Evaluate to launch transition at SIs
+		if pulse:
+			self.evaluate()
+
+		#Capture
+		for i in range(len(capture[0])):
+			v = 0
+			if capture[0][i] == "P" or capture[0][i] == "1":
+				v = 1
+			self.Pi[i].set_value(v)
+
+		#Evaluate to capture transition at POs and SOs
+		self.evaluate()
+		
+		#Output at POs	
+		for i in range(len(capture[1])):
+			if capture[0][i] == "L":
+				if self.Po[i].value != 0 or self.Po[i].value != 4:
+					print("Error at " + self.Po[i].name + " " + str(self.Po[i].value))
+					#return False
+			else:
+				if self.Po[i].value != 1 or self.Po[i].value != 3:
+					print("Error at " + self.Po[i].name + " " + str(self.Po[i].value))
+					#return False
+
+		#Output at SOs
+		for i in range(len(so)):
+			scanvalue = so[i][::-1]
+			scanchain = self.scanchains[i]
+			for j in range(len(scanvalue)):
+				if scanvalue[j] == "L":
+					if scanchain[j].pins["D"] != 0 or scanchain[j].pins["D"] != 4:
+						print("Error at " + scanchain[j].name)
+						#return False
+				else:
+					if scanchain[j].pins["D"] != 1 or scanchain[j].pins["D"] != 3:
+						print("Error at " + scanchain[j].name)
+						#return False
+
+		return True
 
 			
 
+
 cir = Circuit()
 cir.parseVerilog(sys.argv[1])
-cir.parseScanChain(sys.argv[2])
-#cir.debug()
+cir.parseSTIL(sys.argv[2])
+cir.debug()
