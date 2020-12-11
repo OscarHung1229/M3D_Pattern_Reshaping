@@ -40,9 +40,17 @@ class Gate:
 		self.level = l
 	
 
-	def eval(self):
+	def ev(self, debug = False):
+		if debug:
+			print(self.name)
+			print(self.gtype)
+			print(self.pins["A"].value)
+	
 		value = -1
-		if "AND" in self.gtype:
+		if "INV" in self.gtype:
+				self.pins["ZN"].set_value(NotMap[self.pins["A"].value])
+			
+		elif "AND" in self.gtype:
 			for p in self.pins:
 				pin = self.pins[p]
 				if "Z" in pin.name:
@@ -168,7 +176,6 @@ class Gate:
 
 		else:
 			self.pins["Z"].set_value(self.pins["A"].value)
-		
 	 	
 class Wire:
 	def __init__(self, wtype, name):
@@ -198,10 +205,8 @@ class Circuit:
 		self.maxlevel = -1			#Maxlevel
 	
 	def debug(self):
-		for g in self.Gate:
-			gate = self.Gate[g]
-			if gate.level == -1:
-				print(gate.gtype + " " +  gate.name + " " + str(gate.level))
+		print(self.Wire["FE_OFN2869_decoded_block_98_SNET_0"].value)
+		print(self.Wire["decoded_block_98_"].value)
 
 	#Verilog Parser
 	def parseVerilog(self, infile):
@@ -320,7 +325,7 @@ class Circuit:
 				
 	def levelize(self):
 		for p in self.Pi:
-			self.levelize_dfs(p, 0)
+			self.levelize_dfs(p, 1)
 		for sc in self.scanchains:
 			for gate in sc:
 				gate.set_level(0)
@@ -335,8 +340,6 @@ class Circuit:
 			gate = self.Gate[g]
 			l = gate.level
 			self.sorted_Gate[l].append(gate)
-
-		
 	
 	def levelize_dfs(self, wire, level):
 		for gate in wire.fanout:
@@ -472,18 +475,15 @@ class Circuit:
 		f.close()
 
 	def evaluate(self):
-		level0 = True
-		for gates in self.sorted_Gate:
-			if level0:
-				level0 = False
+		for i in range(len(self.sorted_Gate)):
+			if i == 0:
 				continue
-			
+			gates = self.sorted_Gate[i]	
 			for g in gates:
-				g.eval
+				g.ev()
 
 		for g in self.sorted_Gate[0]:
-			g.eval
-			
+			g.ev()
 
 	def test(self, si, launch, capture, so):
 		if len(launch) == 0:
@@ -515,8 +515,8 @@ class Circuit:
 			self.Pi[i].set_value(v)
 
 		#Evaluate to launch transition at SIs
-		if pulse:
-			self.evaluate()
+		#if pulse:
+		self.evaluate()
 
 		#Capture
 		for i in range(len(capture[0])):
@@ -530,14 +530,16 @@ class Circuit:
 		
 		#Output at POs	
 		for i in range(len(capture[1])):
-			if capture[0][i] == "L":
-				if self.Po[i].value != 0 or self.Po[i].value != 4:
+			print(capture[1][i])
+			if capture[1][i] == "L":
+				if self.Po[i].value != 0 and self.Po[i].value != 4:
 					print("Error at " + self.Po[i].name + " " + str(self.Po[i].value))
 					#return False
 			else:
-				if self.Po[i].value != 1 or self.Po[i].value != 3:
+				if self.Po[i].value != 1 and self.Po[i].value != 3:
 					print("Error at " + self.Po[i].name + " " + str(self.Po[i].value))
 					#return False
+
 
 		#Output at SOs
 		for i in range(len(so)):
@@ -545,11 +547,11 @@ class Circuit:
 			scanchain = self.scanchains[i]
 			for j in range(len(scanvalue)):
 				if scanvalue[j] == "L":
-					if scanchain[j].pins["D"] != 0 or scanchain[j].pins["D"] != 4:
+					if scanchain[j].pins["D"] != 0 and scanchain[j].pins["D"] != 4:
 						print("Error at " + scanchain[j].name)
 						#return False
 				else:
-					if scanchain[j].pins["D"] != 1 or scanchain[j].pins["D"] != 3:
+					if scanchain[j].pins["D"] != 1 and scanchain[j].pins["D"] != 3:
 						print("Error at " + scanchain[j].name)
 						#return False
 
