@@ -1,11 +1,12 @@
 import sys
+import time
 from operator import itemgetter	
 
 #Global matrix for signal propagation
 NotMap = [1, 0, 2, 4, 3]
 TransMap = [
-	[0, 3],
- 	[4, 1]
+	[0, 3, 2, 0, 3],
+ 	[4, 1, 2, 4, 1]
 ]	
 AndMap = [
 	[0, 0, 0, 0, 0],
@@ -32,11 +33,13 @@ XorMap = [
 
 
 class Gate:
-	def __init__(self, gtype, name):
+	def __init__(self, gtype, name, die = 0):
 		self.gtype = gtype			#Gate type
 	 	self.level = -1					#Level in the circuit
 	 	self.name = name				#Gate name
 	 	self.pins = {}					#Input/Output pins
+		self.die = die					#Die0/Die1
+		self.initvalue = 99			#Record inital state for TDF patterns
 		
 	def add_pins(self, ptype, wire):
 		self.pins[ptype] = wire
@@ -154,9 +157,9 @@ class Gate:
 
 		elif self.gtype.startswith("OAI33_"):
 			v1 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
-			v2 = OrMap[self.pins["B3"]][v1]
+			v2 = OrMap[self.pins["B3"].value][v1]
 			v3 = OrMap[self.pins["A1"].value][self.pins["A2"].value]
-			v4 = OrMap[self.pins["A3"]][v3]
+			v4 = OrMap[self.pins["A3"].value][v3]
 			value = AndMap[v2][v4]
 			self.pins["ZN"].set_value(NotMap[value])
 
@@ -216,10 +219,9 @@ class Circuit:
 		self.maxlevel = -1			#Maxlevel
 	
 	def debug(self):
-		print("SDFFR.D: " + str(self.Wire["n41537_SNET_0"].value))
-		print("SDFFR.Q " + str(self.Wire["FE_OFN2028_decoded_block_998_SNET_0"].value))
-		print("BUF.Z " + str(self.Wire["wire_TSV_FE_OCPN103029_decoded_block_998_0"].value))
-		print("BUF.Z " + str(self.Wire["decoded_block_998_"].value))
+		g = self.Gate["U328903"]
+		for p in g.pins:
+			print("{0} {1}".format(p, g.pins[p].value))
 		print("\n")
 
 	def reset(self):
@@ -228,6 +230,8 @@ class Circuit:
 	
 	#Verilog Parser
 	def parseVerilog(self, infile):
+		print("Start parsing verilog netlist")
+		begin = time.time()
 		f = open(infile, "r")
 		
 		for line in f:
@@ -295,7 +299,7 @@ class Circuit:
 			newGate.add_pins("A", self.Wire[inwire])
 			self.Wire[inwire].connect(newGate, "OUT")
 			newGate.add_pins("Z", self.Wire[outwire])
-			self.Wire[inwire].connect(newGate, "IN")
+			self.Wire[outwire].connect(newGate, "IN")
 			self.Gate[gname] = newGate
 			
 		i = 0
@@ -312,7 +316,10 @@ class Circuit:
 			
 			gtype = l.split()[0]
 			name = l.split()[1]
-			newGate = Gate(gtype, name)
+			die = 0
+			if "Udie1" in name:
+				die = 1
+			newGate = Gate(gtype, name, die)
 
 			pins = l.split(",")
 			for p in pins:
@@ -329,9 +336,8 @@ class Circuit:
 					self.Wire[wire].connect(newGate, "IN")
 				elif "Q" in ptype:
 					self.Wire[wire].connect(newGate, "IN")
-				elif "S" in ptype:
+				elif ptype == "S" and gtype.startswith("FA"):
 					self.Wire[wire].connect(newGate, "IN")
-					
 				else:
 					self.Wire[wire].connect(newGate, "OUT")
 					
@@ -340,6 +346,10 @@ class Circuit:
 			l = ""
 		
 		f.close()
+
+		end = time.time()
+		print("End parsing verilog netlist\nCPU time: {0:.2f}s\n".format(end-begin))
+		
 				
 	def levelize(self):
 		for p in self.Pi:
@@ -351,7 +361,7 @@ class Circuit:
 				if "QN" in gate.pins:
 					self.levelize_dfs(gate.pins["QN"], 1)
 
-		print("Max level:" + str(self.maxlevel))
+		#print("Max level:" + str(self.maxlevel))
 		
 		self.sorted_Gate = [[] for x in range(self.maxlevel+1)]
 		for g in self.Gate:
@@ -372,10 +382,12 @@ class Circuit:
 					self.levelize_dfs(gate.pins["ZN"], level+1)
 				if "CO" in gate.pins:
 					self.levelize_dfs(gate.pins["CO"], level+1)
-				if "S" in gate.pins:
+				if "S" in gate.pins and gate.gtype.startswith("FA"):
 					self.levelize_dfs(gate.pins["S"], level+1)
 	
 	def parseSTIL(self, infile):
+		print("Start parsing STIL patterns")
+		begin = time.time()
 		f = open(infile, "r")
 		chain = []
 		
@@ -496,12 +508,50 @@ class Circuit:
 
 
 		f.close()
+		end = time.time()
+		print("End parsing STIL patterns\nCPU time: {0:.2f}s\n".format(end-begin))
 
-	def evaluate(self):
+	def evaluate(self, first):
 		for i in range(len(self.sorted_Gate)):
 			gates = self.sorted_Gate[i]	
-			for g in gates:
-				g.ev()
+			if i == 0:
+				# Renew PPI
+				if not first:
+					l3 = []
+					l4 = []
+					for g in gates:
+						g.initvalue = g.pins["D"].value
+						if g.pins["D"].value == 1 and g.pins["Q"].value == 0:
+							l3.append(g)
+						elif g.pins["D"].value == 0 and g.pins["Q"].value == 1:
+							l4.append(g)
+						elif g.pins["D"].value == g.pins["Q"].value:
+							continue
+						elif g.pins["D"].value > 2:
+							print("Unreasonable")
+						else:
+							print("D: " + str(g.pins["D"].value))
+							print("Q: " + str(g.pins["Q"].value))
+					
+					for g in l3:
+						g.pins["Q"].set_value(3)
+						if "QN" in g.pins:
+							g.pins["QN"].set_value(4)
+
+					for g in l4:
+						g.pins["Q"].set_value(4)
+						if "QN" in g.pins:
+							g.pins["QN"].set_value(3)
+				else:
+					for g in gates:
+						if g.pins["Q"].value == 99:
+							print("False " + g.name + " " + g.pins["D"].name + " " + str(g.pins["D"].value))
+						elif "QN" in g.pins and g.pins["QN"].value == 99:
+							print("False " + g.name + " " + g.pins["D"].name + " " + str(g.pins["D"].value))
+						
+			else:	
+				for g in gates:
+					g.ev()
 
 	def test(self, si, launch, capture, so):
 		if len(launch) == 0:
@@ -515,9 +565,9 @@ class Circuit:
 			scanchain = self.scanchains[i]
 			for j in range(len(scanvalue)):
 				v = int(scanvalue[j])
-				scanchain[j].pins["D"].set_value(v)
-				#if "QN" in scanchain[j].pins:
-					#scanchain[j].pins["Q"].set_value(1-v)
+				scanchain[j].pins["Q"].set_value(v)
+				if "QN" in scanchain[j].pins:
+					scanchain[j].pins["QN"].set_value(1-v)
 		
 		#Launch
 		pulse = False
@@ -536,7 +586,8 @@ class Circuit:
 
 		#Evaluate to launch transition at SIs
 		#if pulse:
-		self.evaluate()
+		self.debug()
+		self.evaluate(True)
 
 		#Capture
 		for i in range(len(capture[0])):
@@ -545,19 +596,21 @@ class Circuit:
 				v = 1
 			self.Pi[i].set_value(v)
 
+		self.debug()
 		#Evaluate to capture transition at POs and SOs
-		self.evaluate()
+		self.evaluate(False)
+		self.debug()
 		
 		#Output at POs	
 		for i in range(len(capture[1])):
 			#print(capture[1][i])
 			if capture[1][i] == "L":
 				if self.Po[i].value != 0 and self.Po[i].value != 4:
-					print("Error at " + self.Po[i].name + " " + str(self.Po[i].value))
+					print("Error at PO " + self.Po[i].name + " " + str(self.Po[i].value))
 					#return False
 			else:
 				if self.Po[i].value != 1 and self.Po[i].value != 3:
-					print("Error at " + self.Po[i].name + " " + str(self.Po[i].value))
+					print("Error at PO " + self.Po[i].name + " " + str(self.Po[i].value))
 					#return False
 
 
@@ -568,11 +621,11 @@ class Circuit:
 			for j in range(len(scanvalue)):
 				if scanvalue[j] == "L":
 					if scanchain[j].pins["D"].value != 0 and scanchain[j].pins["D"].value != 4:
-						print("Error at " + scanchain[j].name + " " + str(scanchain[j].pins["D"].value))
+						print("Error at SO " + scanchain[j].name + " " + str(scanchain[j].pins["D"].value))
 						#return False
 				else:
 					if scanchain[j].pins["D"].value != 1 and scanchain[j].pins["D"].value != 3:
-						print("Error at " + scanchain[j].name + " " + str(scanchain[j].pins["D"].value))
+						print("Error at SO " + scanchain[j].name + " " + str(scanchain[j].pins["D"].value))
 						#return False
 
 		return True
@@ -583,14 +636,4 @@ class Circuit:
 cir = Circuit()
 cir.parseVerilog(sys.argv[1])
 cir.parseSTIL(sys.argv[2])
-#gate = Gate("AND", "tmp")
-#w1 = Wire("Wire", "w1")
-#w2 = Wire("Wire", "w2")
-#z = Wire("Wire", "z")
-#gate.add_pins("A1", w1)
-#gate.add_pins("A2", w2)
-#gate.add_pins("ZN", z)
-#w1.set_value(1)
-#w2.set_value(1)
-#gate.ev()
-#print(z.value)
+cir.debug()
