@@ -219,10 +219,8 @@ class Circuit:
 		self.maxlevel = -1			#Maxlevel
 	
 	def debug(self):
-		g = self.Gate["U328903"]
-		for p in g.pins:
-			print("{0} {1}".format(p, g.pins[p].value))
-		print("\n")
+		for w in self.Pi:
+			print("{0}: {1}".format(w.name, w.value))
 
 	def reset(self):
 		for w in self.Wire:
@@ -452,7 +450,7 @@ class Circuit:
 
 		#Patterns
 		finalpattern = False
-		cnt = 0
+		cnt = -1
 		while not finalpattern:
 			cnt += 1
 			step = "load"
@@ -468,9 +466,11 @@ class Circuit:
 				if "Ann" in line:
 					continue
 				elif "Call" in line:
-					if "launch" in line:
+					if "multiclock_capture" in line:
+						step = "pass"
+					elif "allclock_launch" in line:
 					 	step = "launch"
-					elif "capture" in line:
+					elif "allclock_capture" in line:
 					 	step = "capture"
 					elif (step == "capture") and ("load" in line):
 					 	step = "unload"
@@ -498,6 +498,10 @@ class Circuit:
 						if count == len(self.scanchains):
 							break
 					l = ""
+
+			if cnt == 0:
+				print("Pass Pattern {0}".format(cnt))
+				continue
 
 			if self.test(si, launch, capture, so):
 				print("Pattern {0} success!!!".format(cnt))
@@ -563,6 +567,7 @@ class Circuit:
 		for i in range(len(si)):
 			scanvalue = si[i][::-1]
 			scanchain = self.scanchains[i]
+			assert len(scanvalue) == len(scanchain)
 			for j in range(len(scanvalue)):
 				v = int(scanvalue[j])
 				scanchain[j].pins["Q"].set_value(v)
@@ -586,7 +591,6 @@ class Circuit:
 
 		#Evaluate to launch transition at SIs
 		#if pulse:
-		self.debug()
 		self.evaluate(True)
 
 		#Capture
@@ -596,10 +600,8 @@ class Circuit:
 				v = 1
 			self.Pi[i].set_value(v)
 
-		self.debug()
 		#Evaluate to capture transition at POs and SOs
 		self.evaluate(False)
-		self.debug()
 		
 		#Output at POs	
 		for i in range(len(capture[1])):
@@ -607,11 +609,11 @@ class Circuit:
 			if capture[1][i] == "L":
 				if self.Po[i].value != 0 and self.Po[i].value != 4:
 					print("Error at PO " + self.Po[i].name + " " + str(self.Po[i].value))
-					#return False
+					return False
 			else:
 				if self.Po[i].value != 1 and self.Po[i].value != 3:
 					print("Error at PO " + self.Po[i].name + " " + str(self.Po[i].value))
-					#return False
+					return False
 
 
 		#Output at SOs
@@ -622,11 +624,11 @@ class Circuit:
 				if scanvalue[j] == "L":
 					if scanchain[j].pins["D"].value != 0 and scanchain[j].pins["D"].value != 4:
 						print("Error at SO " + scanchain[j].name + " " + str(scanchain[j].pins["D"].value))
-						#return False
+						return False
 				else:
 					if scanchain[j].pins["D"].value != 1 and scanchain[j].pins["D"].value != 3:
 						print("Error at SO " + scanchain[j].name + " " + str(scanchain[j].pins["D"].value))
-						#return False
+						return False
 
 		return True
 
@@ -636,4 +638,3 @@ class Circuit:
 cir = Circuit()
 cir.parseVerilog(sys.argv[1])
 cir.parseSTIL(sys.argv[2])
-cir.debug()
