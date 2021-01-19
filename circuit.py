@@ -48,7 +48,7 @@ class Gate:
 		self.level = l
 	
 
-	def ev(self, debug = False):
+	def ev(self, first, debug = False):
 		if debug:
 			print(self.name)
 			print(self.gtype)
@@ -56,7 +56,7 @@ class Gate:
 	
 		value = -1
 		if "INV" in self.gtype:
-				self.pins["ZN"].set_value(NotMap[self.pins["A"].value])
+				self.pins["ZN"].set_value(NotMap[self.pins["A"].value], first)
 			
 		elif "AND" in self.gtype:
 			for p in self.pins:
@@ -68,9 +68,9 @@ class Gate:
 				else:
 					value = AndMap[value][pin.value]
 			if "NAND" in self.gtype:
-				self.pins["ZN"].set_value(NotMap[value])
+				self.pins["ZN"].set_value(NotMap[value], first)
 			else: 
-				self.pins["ZN"].set_value(value)
+				self.pins["ZN"].set_value(value, first)
 
 		elif self.gtype.startswith("OR") or self.gtype.startswith("NOR"):
 			for p in self.pins:
@@ -82,39 +82,39 @@ class Gate:
 				else:
 					value = OrMap[value][pin.value]
 			if "NOR" in self.gtype:
-				self.pins["ZN"].set_value(NotMap[value])
+				self.pins["ZN"].set_value(NotMap[value], first)
 			else: 
-				self.pins["ZN"].set_value(value)
+				self.pins["ZN"].set_value(value, first)
 		
 		elif self.gtype.startswith("XOR"):
-			self.pins["Z"].set_value(XorMap[self.pins["A"].value][self.pins["B"].value])
+			self.pins["Z"].set_value(XorMap[self.pins["A"].value][self.pins["B"].value], first)
 			
 		elif self.gtype.startswith("XNOR"):
-			self.pins["ZN"].set_value(NotMap[XorMap[self.pins["A"].value][self.pins["B"].value]])
+			self.pins["ZN"].set_value(NotMap[XorMap[self.pins["A"].value][self.pins["B"].value]], first)
 
 		elif self.gtype.startswith("AOI21_"):
 			value = AndMap[self.pins["B1"].value][self.pins["B2"].value]
 			value = OrMap[self.pins["A"].value][value]
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 
 		elif self.gtype.startswith("AOI22_"):
 			v1 = AndMap[self.pins["B1"].value][self.pins["B2"].value]
 			v2 = AndMap[self.pins["A1"].value][self.pins["A2"].value]
 			value = OrMap[v1][v2]
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 			
 		elif self.gtype.startswith("AOI211_"):
 			value = AndMap[self.pins["C1"].value][self.pins["C2"].value]
 			value = OrMap[self.pins["B"].value][value]
 			value = OrMap[self.pins["A"].value][value]
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 
 		elif self.gtype.startswith("AOI221_"):
 			v1 = AndMap[self.pins["C1"].value][self.pins["C2"].value]
 			v2 = AndMap[self.pins["B1"].value][self.pins["B2"].value]
 			value = OrMap[self.pins["A"].value][v1]
 			value = OrMap[v2][value]
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 
 		elif self.gtype.startswith("AOI222_"):
 			v1 = AndMap[self.pins["C1"].value][self.pins["C2"].value]
@@ -122,31 +122,31 @@ class Gate:
 			v3 = AndMap[self.pins["A1"].value][self.pins["A2"].value]
 			value = OrMap[v1][v2]
 			value = OrMap[v3][value]
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 				
 		elif self.gtype.startswith("OAI21_"):
 			v1 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
 			value = AndMap[v1][self.pins["A"].value]	
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 
 		elif self.gtype.startswith("OAI22_"):
 			v1 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
 			v2 = OrMap[self.pins["A1"].value][self.pins["A2"].value]
 			value = AndMap[v1][v2]
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 
 		elif self.gtype.startswith("OAI211_"):
 			v1 = OrMap[self.pins["C1"].value][self.pins["C2"].value]
 			value = AndMap[v1][self.pins["A"].value]	
 			value = AndMap[value][self.pins["B"].value]	
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 
 		elif self.gtype.startswith("OAI221_"):
 			v1 = OrMap[self.pins["C1"].value][self.pins["C2"].value]
 			v2 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
 			value = AndMap[v1][self.pins["A"].value]	
 			value = AndMap[value][v2]
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 
 		elif self.gtype.startswith("OAI222_"):
 			v1 = OrMap[self.pins["C1"].value][self.pins["C2"].value]
@@ -154,7 +154,7 @@ class Gate:
 			v3 = OrMap[self.pins["A1"].value][self.pins["A2"].value]
 			value = AndMap[v1][v2]
 			value = AndMap[value][v3]
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 
 		elif self.gtype.startswith("OAI33_"):
 			v1 = OrMap[self.pins["B1"].value][self.pins["B2"].value]
@@ -162,35 +162,35 @@ class Gate:
 			v3 = OrMap[self.pins["A1"].value][self.pins["A2"].value]
 			v4 = OrMap[self.pins["A3"].value][v3]
 			value = AndMap[v2][v4]
-			self.pins["ZN"].set_value(NotMap[value])
+			self.pins["ZN"].set_value(NotMap[value], first)
 
 		elif self.gtype.startswith("MUX"):
 			v1 = AndMap[self.pins["A"].value][NotMap[self.pins["S"].value]]
 			v2 = AndMap[self.pins["B"].value][self.pins["S"].value]
-			self.pins["Z"].set_value(OrMap[v1][v2])
+			self.pins["Z"].set_value(OrMap[v1][v2], first)
 
 		elif self.gtype.startswith("FA"):
 			v1 = XorMap[self.pins["A"].value][self.pins["B"].value]
-			self.pins["S"].set_value(XorMap[v1][self.pins["CI"].value])
+			self.pins["S"].set_value(XorMap[v1][self.pins["CI"].value], first)
 			v2 = OrMap[self.pins["A"].value][self.pins["B"].value]
 			v3 = AndMap[v2][self.pins["CI"].value]
 			v4 = AndMap[self.pins["A"].value][self.pins["B"].value]
-			self.pins["CO"].set_value(OrMap[v3][v4])
+			self.pins["CO"].set_value(OrMap[v3][v4], first)
 
 		elif "DFF" in self.gtype:
 			if self.pins["Q"].value == 99:
-				self.pins["Q"].set_value(self.pins["D"].value)
+				self.pins["Q"].set_value(self.pins["D"].value, first)
 				if "QN" in self.pins:
-					self.pins["QN"].set_value(NotMap[self.pins["D"].value])
+					self.pins["QN"].set_value(NotMap[self.pins["D"].value], first)
 			else:
 				value = TransMap[self.pins["Q"].value][self.pins["D"].value]
-				self.pins["Q"].set_value(value)
+				self.pins["Q"].set_value(value, first)
 				if "QN" in self.pins:
-					self.pins["QN"].set_value(NotMap[value])
+					self.pins["QN"].set_value(NotMap[value], first)
 				
 
 		else:
-			self.pins["Z"].set_value(self.pins["A"].value)
+			self.pins["Z"].set_value(self.pins["A"].value, first)
 
 class Wire:
 	def __init__(self, wtype, name):
@@ -208,8 +208,12 @@ class Wire:
 		else:
 			self.fanout.append(gate)
 	
-	def set_value(self, v):
+	def set_value(self, v, first):
 		self.value = v
+		if first:
+			self.v1 = v
+		else:
+			self.v2 = v
 
 class Circuit:
 	def __init__(self):
@@ -226,7 +230,8 @@ class Circuit:
 
 	def reset(self):
 		for w in self.Wire:
-			self.Wire[w].set_value(99)
+			self.Wire[w].set_value(99, True)
+			self.Wire[w].v2 = 99
 	
 	#Verilog Parser
 	def parseVerilog(self, infile):
@@ -501,7 +506,7 @@ class Circuit:
 							break
 					l = ""
 
-			if cnt == 0:
+			if cnt < 3:
 				print("Pass Pattern {0}".format(cnt))
 				continue
 
@@ -509,8 +514,9 @@ class Circuit:
 				print("Pattern {0} success!!!".format(cnt))
 			else:
 				print("Pattern {0} failed!!!".format(cnt))
-				break
 		
+			if cnt == 6:
+				break
 
 
 		f.close()
@@ -523,31 +529,38 @@ class Circuit:
 			if i == 0:
 				# Renew PPI
 				if not first:
-					l3 = []
-					l4 = []
+					l = []
 					for g in gates:
-						g.initvalue = g.pins["D"].value
-						if g.pins["D"].value == 1 and g.pins["Q"].value == 0:
-							l3.append(g)
-						elif g.pins["D"].value == 0 and g.pins["Q"].value == 1:
-							l4.append(g)
-						elif g.pins["D"].value == g.pins["Q"].value:
-							continue
-						elif g.pins["D"].value > 2:
-							print("Unreasonable")
+						vD = g.pins["D"].value
+						vQ = g.pins["Q"].value
+						if vD == vQ:
+							l.append(vD)
+						elif vD == 2:
+							l.append(2)
+						elif vQ == 2:
+							l.append(vD)
+						elif vD == 1 and vQ == 0:
+							l.append(3)
+						elif vD == 0 and vQ == 1:
+							l.append(4)
 						else:
-							print("D: " + str(g.pins["D"].value))
-							print("Q: " + str(g.pins["Q"].value))
+							assert(False)
 					
-					for g in l3:
-						g.pins["Q"].set_value(3)
+					for i in range(len(gates)):
+						g = gates[i]
+						g.pins["Q"].set_value(l[i], first)
 						if "QN" in g.pins:
-							g.pins["QN"].set_value(4)
-
-					for g in l4:
-						g.pins["Q"].set_value(4)
-						if "QN" in g.pins:
-							g.pins["QN"].set_value(3)
+							if l[i] < 2:
+								g.pins["QN"].set_value(1-l[i], first)
+							elif l[i] == 2:
+								g.pins["QN"].set_value(2, first)
+							elif l[i] == 3:
+								g.pins["QN"].set_value(4, first)
+							elif l[i] == 4:
+								g.pins["QN"].set_value(3, first)
+							else:
+								assert(False)
+					
 				else:
 					for g in gates:
 						if g.pins["Q"].value == 99:
@@ -557,7 +570,7 @@ class Circuit:
 						
 			else:	
 				for g in gates:
-					g.ev()
+					g.ev(first)
 
 	def test(self, si, launch, capture, so):
 		if len(launch) == 0:
@@ -571,10 +584,15 @@ class Circuit:
 			scanchain = self.scanchains[i]
 			assert len(scanvalue) == len(scanchain)
 			for j in range(len(scanvalue)):
-				v = int(scanvalue[j])
-				scanchain[j].pins["Q"].set_value(v)
-				if "QN" in scanchain[j].pins:
-					scanchain[j].pins["QN"].set_value(1-v)
+				if scanvalue[j] == "N":
+					scanchain[j].pins["Q"].set_value(2, True)
+					if "QN" in scanchain[j].pins:
+						scanchain[j].pins["QN"].set_value(2, True)
+				else:
+					v = int(scanvalue[j])
+					scanchain[j].pins["Q"].set_value(v, True)
+					if "QN" in scanchain[j].pins:
+						scanchain[j].pins["QN"].set_value(1-v, True)
 		
 		#Launch
 		pulse = False
@@ -589,7 +607,9 @@ class Circuit:
 					reset = True
 			elif launch[0][i] == "1":
 				v = 1
-			self.Pi[i].set_value(v)
+			elif launch[0][i] == "N":
+				v = 2
+			self.Pi[i].set_value(v, True)
 
 		#Evaluate to launch transition at SIs
 		#if pulse:
@@ -600,7 +620,9 @@ class Circuit:
 			v = 0
 			if capture[0][i] == "P" or capture[0][i] == "1":
 				v = 1
-			self.Pi[i].set_value(v)
+			elif capture[0][i] == "N":
+				v = 2
+			self.Pi[i].set_value(v, False)
 
 		#Evaluate to capture transition at POs and SOs
 		self.evaluate(False)
@@ -611,6 +633,10 @@ class Circuit:
 			if capture[1][i] == "L":
 				if self.Po[i].value != 0 and self.Po[i].value != 4:
 					print("Error at PO " + self.Po[i].name + " " + str(self.Po[i].value))
+					return False
+			elif capture[1][i] == "X":
+				if self.Po[i].value != 2:
+					print("Error at PO " + self.Po[i].name + " " + str(self.Po[i].value) + ", Don't care!")
 					return False
 			else:
 				if self.Po[i].value != 1 and self.Po[i].value != 3:
@@ -627,11 +653,17 @@ class Circuit:
 					if scanchain[j].pins["D"].value != 0 and scanchain[j].pins["D"].value != 4:
 						print("Error at SO " + scanchain[j].name + " " + str(scanchain[j].pins["D"].value))
 						return False
+				elif scanvalue[j] == "X":
+					if scanchain[j].pins["D"].value != 2:
+						print("Error at SO " + scanchain[j].name + " " + str(scanchain[j].pins["D"].value) + "Don't care!")
+						return False
 				else:
 					if scanchain[j].pins["D"].value != 1 and scanchain[j].pins["D"].value != 3:
 						print("Error at SO " + scanchain[j].name + " " + str(scanchain[j].pins["D"].value))
 						return False
 
+		
+		construct(self)
 		return True
 
 			
@@ -639,5 +671,4 @@ class Circuit:
 
 cir = Circuit()
 cir.parseVerilog(sys.argv[1])
-construct(cir)
-#cir.parseSTIL(sys.argv[2])
+cir.parseSTIL(sys.argv[2])
