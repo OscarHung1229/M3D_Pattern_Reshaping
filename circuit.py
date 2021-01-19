@@ -1,5 +1,6 @@
 import sys
 import time
+from ilp import construct
 from operator import itemgetter	
 
 #Global matrix for signal propagation
@@ -198,6 +199,8 @@ class Wire:
 		self.name = name				#Wire name
  		self.fanin = 0					#Fanin gate
 		self.fanout = []				#Fanout gates	
+		self.v1 	 = 99					#Value of v1
+		self.v2		 = 99					#Value of v2
 	
 	def connect(self, gate, direction):
 		if direction == "IN":
@@ -219,8 +222,7 @@ class Circuit:
 		self.maxlevel = -1			#Maxlevel
 	
 	def debug(self):
-		for w in self.Pi:
-			print("{0}: {1}".format(w.name, w.value))
+		print("test")
 
 	def reset(self):
 		for w in self.Wire:
@@ -637,4 +639,5 @@ class Circuit:
 
 cir = Circuit()
 cir.parseVerilog(sys.argv[1])
-cir.parseSTIL(sys.argv[2])
+construct(cir)
+#cir.parseSTIL(sys.argv[2])
