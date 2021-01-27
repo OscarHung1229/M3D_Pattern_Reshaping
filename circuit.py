@@ -572,7 +572,13 @@ class Circuit:
 			else:
 				if self.test(si, launch, capture, so, cnt):
 					print("Pattern {0} success!!!".format(cnt))
-					dumpSTA(self, True, cnt, "")
+					SDD = ""
+					prefer = False
+					if "SDD" in infile:
+						SDD = "_SDD"
+					if "prefer" in infile:
+						prefer = True
+					dumpSTA(self, prefer, cnt, SDD)
 				else:
 					print("Pattern {0} failed!!!".format(cnt))
 		
@@ -609,11 +615,11 @@ class Circuit:
 						elif vD == 1 and vQ == 0:
 							l.append(3)
 							if g.die == 0:
-								cost += len(g.pins["Q"].fanout)
+								cost += len(g.pins["Q"].fanout) + 1
 						elif vD == 0 and vQ == 1:
 							l.append(4)
 							if g.die == 0:
-								cost += len(g.pins["Q"].fanout)
+								cost += len(g.pins["Q"].fanout) + 1
 						else:
 							print("D: " + str(vD))
 							print("Q: " + str(vQ))
@@ -630,11 +636,11 @@ class Circuit:
 							elif l[i] == 3:
 								g.pins["QN"].set_value(4, first)
 								if g.die == 0:
-									cost += len(g.pins["QN"].fanout)
+									cost += len(g.pins["QN"].fanout) + 1
 							elif l[i] == 4:
 								g.pins["QN"].set_value(3, first)
 								if g.die == 0:
-									cost += len(g.pins["QN"].fanout)
+									cost += len(g.pins["QN"].fanout) + 1
 							else:
 								assert(False)
 					
@@ -650,7 +656,8 @@ class Circuit:
 					g.ev(first)
 					if not first and g.die == 0:
 						for w in g.outpin:
-							cost += len(w.fanout)
+							if w.value > 2:
+								cost += len(w.fanout) + 1
 					
 		return cost
 					
@@ -699,7 +706,7 @@ class Circuit:
 			self.Pi[i].v2 = v
 
 		#Reshape by preferred-fill and Simulate Annealing
-		sa = Minimize(self, step_max=200)
+		sa = Minimize(self, step_max=50)
 		sa.main()
 		return True
 
@@ -758,6 +765,13 @@ class Circuit:
 			self.Pi[i].set_value(v, False)
 
 		c2 = self.evaluate(False)
+		if pat == 1:
+			with open(self.design+"/WSA.rpt", "w") as fout:
+				fout.write("WSA of Pattern {0}: {1}\n".format(pat, c2))
+		else:
+			with open(self.design+"/WSA.rpt", "a") as fout:
+				fout.write("WSA of Pattern {0}: {1}\n".format(pat, c2))
+
 		print("WSA of Pattern {0}: {1}".format(pat, c2))
 
 		if c2 > self.worstcost:
