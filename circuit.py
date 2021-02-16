@@ -1,6 +1,6 @@
 import sys
 import time
-from ilp import construct, construct_pbased
+from ilp import construct
 from operator import itemgetter	
 import random
 from SA import Minimize 
@@ -239,12 +239,15 @@ class Circuit:
 		self.design = design
 		self.reshapepat = []		#Reshape patterns
 		self.preferpat = []	  	#Preferred fill patterns
+		self.ilppat = []	  		#ILP reshaped patterns
 		self.worstcost = 0			#Worst case WSA	
 		self.worstpat = -1			#Worst case WSA	
 		self.worstsi = []     	#Worst case WSA  
 		self.worstlaunch = []		#Worst case WSA	
 		self.worstcapture = []	#Worst case WSA	
 		self.worstso = []				#Worst case WSA	
+		self.WSA = []						#For WSA calculation
+		self.prefix = []				#For ILP intermediate pattern
 
 	def debug(self):
 		cnt0 = 0
@@ -268,6 +271,15 @@ class Circuit:
 			self.Wire["net1"].set_value(0, False)
 			self.Wire["net8"].set_value(0, True)
 			self.Wire["net8"].set_value(0, False)
+		elif self.design == "netcard_GNN":
+			self.Wire["net1"].set_value(0, True)
+			self.Wire["net1"].set_value(0, False)
+			self.Wire["net2"].set_value(0, True)
+			self.Wire["net2"].set_value(0, False)
+			self.Wire["net3"].set_value(0, True)
+			self.Wire["net3"].set_value(0, False)
+			self.Wire["net10"].set_value(0, True)
+			self.Wire["net10"].set_value(0, False)
 	
 	#Verilog Parser
 	def parseVerilog(self, infile):
@@ -434,15 +446,15 @@ class Circuit:
 				if "S" in gate.pins and gate.gtype.startswith("FA"):
 					self.levelize_dfs(gate.pins["S"], level+1)
 	
-	def parseSTIL(self, infile, reshape=True):
+	def parseSTIL(self, infile, key):
 		print("Start parsing STIL patterns")
 		begin = time.time()
 
 		# Output Simulate Annealing result	
-		if reshape:
-			filename = self.design + "/SA.rpt"
-			with open(filename, "w") as fout:
-				fout.write("Simulate Annealing result\n")
+		#if reshape:
+		#	filename = self.design + "/SA.rpt"
+		#	with open(filename, "w") as fout:
+		#		fout.write("Simulate Annealing result\n")
 		
 		f = open(infile, "r")
 		chain = []
@@ -502,6 +514,11 @@ class Circuit:
 		#Levelization after parsing scan chains
 		self.levelize()
 
+		if key == 4:
+			self.ILPSTILprefix(infile)
+			with open(self.design+"/"+self.design+"_ilp.log", "w") as flog:
+				flog.write("ILP reshaping log file!\n")
+
 		for line in f:
 			if "pattern 0" in line:
 				break
@@ -524,16 +541,19 @@ class Circuit:
 				if "Ann" in line:
 					continue
 				elif "Call" in line:
-					if "multiclock_capture" in line and cnt != 0:
-						step = "pass"
+					if "capture" in line and step == "launch":
+					 	step = "capture"
+					elif "multiclock_capture" in line and cnt != 0:
+					 	step = "launch"
+					elif "multiclock_capture" in line and cnt == 0:
+					 	step = "capture"
 					elif "allclock_launch" in line:
 					 	step = "launch"
-					elif "capture" in line:
-					 	step = "capture"
 					elif (step == "capture") and ("load" in line):
 					 	step = "unload"
 
 					if "end" in line:
+						print("Final Pat")
 						finalpattern = True
 					continue
 
@@ -547,7 +567,7 @@ class Circuit:
 					if step == "load":
 						si.append(subline)
 					elif step == "launch":
-						launch.append(subline)
+						launch.insert(0, subline)
 					elif step == "capture":
 						capture.append(subline)
 					elif step == "unload":
@@ -561,35 +581,64 @@ class Circuit:
 				print("Pass Pattern {0}".format(cnt))
 				continue
 
-			if reshape:
+			if key == 0:
+				if self.test(si, launch, capture, so, cnt, infile):
+					print("Pattern {0} success!!!".format(cnt))
+				else:
+					print("Pattern {0} failed!!!".format(cnt))
+				
+			elif key == 1:
+				if self.test(si, launch, capture, so, cnt, infile):
+					print("Pattern {0} success!!!".format(cnt))
+					dumpSTA(self, infile, cnt)	
+				else:
+					print("Pattern {0} failed!!!".format(cnt))
+
+			elif key == 2 or key == 3:
 				t1 = time.time()
-				if self.reshape(si, launch, capture, so):
+				if self.reshape(si, launch, capture, so, key):
 					print("Pattern {0} success!!!".format(cnt))
 				else:
 					print("Pattern {0} failed!!!".format(cnt))
 				t2 = time.time()
 				print("CPU time: {0:.2f}s".format(t2-t1))
-			else:
-				if self.test(si, launch, capture, so, cnt):
-					print("Pattern {0} success!!!".format(cnt))
-					SDD = ""
-					prefer = False
-					if "SDD" in infile:
-						SDD = "_SDD"
-					if "prefer" in infile:
-						prefer = True
-					dumpSTA(self, prefer, cnt, SDD)
+				print("CPU time from beginning: {0:.2f}s".format(t2-begin))
+				if t2-begin >= 172800:
+					break
+			elif key == 4:
+				t1 = time.time()
+				if self.reshape(si, launch, capture, so, key):
+					self.dumpInterILPSTIL()
+					with open(self.design+"/"+self.design+"_ilp.log", "a") as flog:
+						flog.write("Pattern {0} success!!!\n".format(cnt))
 				else:
-					print("Pattern {0} failed!!!".format(cnt))
-		
+					with open(self.design+"/"+self.design+"_ilp.log", "a") as flog:
+						flog.write("Pattern {0} failed!!!\n".format(cnt))
+				t2 = time.time()
+				with open(self.design+"/"+self.design+"_ilp.log", "a") as flog:
+					flog.write("CPU time: {0:.2f}s\n".format(t2-t1))
+					flog.write("CPU time from beginning: {0:.2f}s\n".format(t2-begin))
+				if t2-begin >= 172800:
+					break
+				
+				
 
 		f.close()
-		end = time.time()
-		print("End parsing STIL patterns\nCPU time: {0:.2f}s\n".format(end-begin))
+		endtime = time.time()
+		print("End parsing STIL patterns\nCPU time: {0:.2f}s\n".format(endtime-begin))
+		if key == 2:
+			with open(self.design + "/" + "runtime_prefer.rpt", 'w') as fout:
+				fout.write("End parsing STIL patterns\nCPU time: {0:.2f}s\n".format(endtime-begin))	
+		elif key == 3:
+			with open(self.design + "/" + "runtime_sa.rpt", 'w') as fout:
+				fout.write("End parsing STIL patterns\nCPU time: {0:.2f}s\n".format(endtime-begin))	
+		elif key == 4:
+			with open(self.design + "/" + "runtime_ilp.rpt", 'w') as fout:
+				fout.write("End parsing STIL patterns\nCPU time: {0:.2f}s\n".format(endtime-begin))	
 
 	def evaluate(self, first):
 		cost = 0
-		if self.design == "ldpc" and not first:
+		if "ldpc" in self.design and not first:
 			for w in self.Pi:
 				if w.v2 != 2 and w.v2 != 99:
 					w.set_value(w.v2, False)
@@ -662,7 +711,7 @@ class Circuit:
 		return cost
 					
 
-	def reshape(self, si, launch, capture, so):
+	def reshape(self, si, launch, capture, so, key):
 		if len(launch) == 0:
 		 return True
 
@@ -706,11 +755,28 @@ class Circuit:
 			self.Pi[i].v2 = v
 
 		#Reshape by preferred-fill and Simulate Annealing
-		sa = Minimize(self, step_max=50)
-		sa.main()
+		if key == 2:
+			sa = Minimize(self, step_max=400)
+			sa.prefer()
+		elif key == 3:
+			sa = Minimize(self, step_max=50)
+			sa.main()
+		elif key == 4:
+			self.evaluate(True)
+			self.evaluate(False)
+			if construct(self):
+				return True
+			else:
+		 		return False
+
 		return True
 
-	def test(self, si, launch, capture, so, pat):
+
+	def test(self, si, launch, capture, so, pat, infile):
+		idx1 = infile.find("/")
+		idx2 = infile.find(".stil")
+		rptname = infile[idx1+1:idx2]
+
 		if len(launch) == 0:
 		 return True
 
@@ -765,14 +831,17 @@ class Circuit:
 			self.Pi[i].set_value(v, False)
 
 		c2 = self.evaluate(False)
+		self.WSA.append(c2)
+
 		if pat == 1:
-			with open(self.design+"/WSA.rpt", "w") as fout:
+			with open(self.design+"/WSA_"+rptname+".rpt", "w") as fout:
 				fout.write("WSA of Pattern {0}: {1}\n".format(pat, c2))
 		else:
-			with open(self.design+"/WSA.rpt", "a") as fout:
+			with open(self.design+"/WSA_"+rptname+".rpt", "a") as fout:
 				fout.write("WSA of Pattern {0}: {1}\n".format(pat, c2))
 
 		print("WSA of Pattern {0}: {1}".format(pat, c2))
+		#return True
 
 		if c2 > self.worstcost:
 			self.worstpat = pat
@@ -877,22 +946,18 @@ class Circuit:
 		end = time.time()
 		print("End dumping STIL patterns\nCPU time: {0:.2f}s\n".format(end-begin))
 
-	def dumpSTIL(self, infile):
+	def dumpPreferSTIL(self, infile):
 		begin = time.time()
 		print("Start dumping STIL patterns")
 		f = open(infile, "r")
 		f_pre = open(self.design+"/"+self.design+"_prefer.stil", "w")
-		f_res = open(self.design+"/"+self.design+"_reshape.stil", "w")
 		f_pworst = open(self.design+"/"+self.design+"_pworst.stil", "w")
-		f_rworst = open(self.design+"/"+self.design+"_rworst.stil", "w")
 
 		first = False
 		prefix = []
 		for line in f:
 			f_pre.write(line)
-			f_res.write(line)
 			f_pworst.write(line)
-			f_rworst.write(line)
 
 			if "pattern 0" in line:
 				first = True
@@ -928,7 +993,7 @@ class Circuit:
 			self.reset()
 
 			for name in pat:
-				if self.design == "ldpc" and "_v2" in name:
+				if "ldpc" in self.design and "_v2" in name:
 					idx = name.find("_v2")
 					n = name[:idx]
 					w = self.Wire[n]
@@ -1033,7 +1098,7 @@ class Circuit:
 			 	elif i == len(self.scanchains)+1:
 					f_pre.write(prefix[i]+"\n"+po+"\n; }\n")
 					f_pre.write("   Ann {* fast_sequential *}\n")
-					if cnt == len(self.reshapepat):
+					if cnt == len(self.preferpat):
 						f_pre.write("   \"end "+ str(cnt)+ " unload\": Call \"load_unload\" {\n")
 					else:
 						f_pre.write("   \"pattern "+ str(cnt+1)+ "\": Call \"load_unload\" {\n")
@@ -1069,7 +1134,338 @@ class Circuit:
 			else:
 				f_pworst.write(prefix[i]+"\n")
 				f_pworst.write(worst_so[i-len(self.scanchains)-2]+"\n;\n")
+		
+		f_pre.write("  }\n}\n\n// Patterns reference")
+		f_pworst.write("  }\n}\n\n// Patterns reference")
+		f_pre.close()
+		f_pworst.close()
 
+		end = time.time()
+		print("End dumping STIL patterns\nCPU time: {0:.2f}s\n".format(end-begin))
+
+		return True
+	
+	def ILPSTILprefix(self, infile):
+		print("Start dumping ILP STIL prefix")
+		f = open(infile, "r")
+		f_ilp = open(self.design+"/"+self.design+"_ilp.stil", "w")
+
+		first = False
+		prefix = []
+		for line in f:
+			f_ilp.write(line)
+
+			if "pattern 0" in line:
+				first = True
+
+			if first and "\"=" in line:
+					idx1 = line.find("=")+1
+					prefix.append(line[:idx1])
+
+			if len(prefix) == 2*len(self.scanchains)+2 and ";" in line:
+					break
+	
+		f.close()
+		self.prefix = prefix
+		print("END dumping ILP STIL prefix")
+
+	def dumpInterILPSTIL(self):
+		f_ilp = open(self.design+"/"+self.design+"_ilp.stil", "a")
+		prefix = self.prefix
+		pat = self.ilppat[-1]
+		cnt = len(self.ilppat)
+		si = []
+		so = []
+		pi_m = ""
+		pi = ""
+		pi_c = ""
+		po = ""
+
+		self.reset()
+
+		for name in pat:
+			if "ldpc" in self.design and "_v2" in name:
+				idx = name.find("_v2")
+				n = name[:idx]
+				w = self.Wire[n]
+				w.v2 = pat[name]
+				continue
+			w = self.Wire[name]
+			g = w.fanin
+			w.set_value(pat[name], True)
+			if g == 0 and w.v2 == 99:
+				w.set_value(pat[name], False)
+			elif g != 0 and "QN" in g.pins:
+				g.pins["QN"].set_value(1-pat[name], True)
+
+				
+
+		self.evaluate(True)
+		cost = self.evaluate(False)
+
+		
+		for chain in self.scanchains:
+			l_si = ""
+			l_so = ""
+			for i in range(len(chain)):
+				sc = chain[len(chain)-i-1]
+				l_si += str(sc.pins["Q"].v1)
+				if sc.pins["D"].v2 == 1 or sc.pins["D"].v2 == 3:
+					l_so += "H"
+				elif sc.pins["D"].v2 == 0 or sc.pins["D"].v2 == 4:
+					l_so += "L"
+				else:
+					print("Don't care bits at SO after reshaping!")
+					l_so += "X"
+				
+				if i%1024==1023:
+					l_si += "\n"
+					l_so += "\n"
+			si.append(l_si)
+			so.append(l_so)
+		
+		for i in range(len(self.Pi)):
+			p = self.Pi[i]
+			if p.name == "clk" or p.name == "clock" or p.name == "ispd_clk":
+				pi_m += str(0)
+				if p.v1 == 1:
+					pi += "P"
+				else:
+					pi += str(0)
+				if True:
+					pi_c += "P"
+				else:
+					pi_c += str(0)
+
+			else:
+				pi += str(p.v1)
+				pi_m += str(p.v1)
+				pi_c += str(p.v2)
+			if i%1024==1023:
+				pi += "\n"
+				pi_m += "\n"
+				pi_c += "\n"
+			
+		for i in range(len(self.Po)):
+			p = self.Po[i]
+			if p.v2 == 1 or p.v2 == 3:
+				po += "H"
+			elif p.v2 == 0 or p.v2 == 4:
+				po += "L"
+			else:
+				print("Don't care bits at PO after reshaping!")
+				po += "X"
+
+			if i%1024==1023:
+				po += "\n"
+
+		for i in range(len(prefix)):
+			# Load
+		 	if i < len(self.scanchains):
+				f_ilp.write(prefix[i]+"\n")
+		 		if i == len(self.scanchains)-1:
+					f_ilp.write(si[i]+"\n; }\n")
+				else:
+					f_ilp.write(si[i]+"\n;\n")
+			
+			# Launch and Capture
+		 	elif i == len(self.scanchains):
+				#if self.design != "ldpc":
+				f_ilp.write("   Call \"multiclock_capture\" {\n")
+				f_ilp.write(prefix[i]+"\n"+pi_m+"; }\n")
+				f_ilp.write("   Call \"allclock_launch\" {\n")
+				f_ilp.write(prefix[i]+"\n"+pi+"; }\n")
+				f_ilp.write("   Call \"allclock_capture\" {\n")
+				f_ilp.write(prefix[i]+"\n"+pi_c+";\n")
+		 	elif i == len(self.scanchains)+1:
+				f_ilp.write(prefix[i]+"\n"+po+"\n; }\n")
+				f_ilp.write("   Ann {* fast_sequential *}\n")
+				#if cnt == len(self.ilppat):
+				#	f_ilp.write("   \"end "+ str(cnt)+ " unload\": Call \"load_unload\" {\n")
+				#else:
+				#	f_ilp.write("   \"pattern "+ str(cnt+1)+ "\": Call \"load_unload\" {\n")
+				f_ilp.write("   \"pattern "+ str(cnt+1)+ "\": Call \"load_unload\" {\n")
+			# Unload
+			else:
+				f_ilp.write(prefix[i]+"\n")
+				f_ilp.write(so[i-len(self.scanchains)-2]+"\n;\n")
+		
+		return True
+
+	def	dumpILPSTIL(self, infile):
+		begin = time.time()
+		print("Start dumping ILP STIL patterns")
+		f = open(infile, "r")
+		f_ilp = open(self.design+"/"+self.design+"_ilp.stil", "w")
+
+		first = False
+		prefix = []
+		for line in f:
+			f_ilp.write(line)
+
+			if "pattern 0" in line:
+				first = True
+
+			if first and "\"=" in line:
+					idx1 = line.find("=")+1
+					prefix.append(line[:idx1])
+
+			if len(prefix) == 2*len(self.scanchains)+2 and ";" in line:
+					break
+	
+		f.close()
+
+		#Dump preferred-fill pattern
+		cnt = 0
+		for pat in self.ilppat:
+			cnt += 1
+			si = []
+			so = []
+			pi_m = ""
+			pi = ""
+			pi_c = ""
+			po = ""
+
+			self.reset()
+
+			for name in pat:
+				if "ldpc" in self.design and "_v2" in name:
+					idx = name.find("_v2")
+					n = name[:idx]
+					w = self.Wire[n]
+					w.v2 = pat[name]
+					continue
+				w = self.Wire[name]
+				g = w.fanin
+				w.set_value(pat[name], True)
+				if g == 0 and w.v2 == 99:
+					w.set_value(pat[name], False)
+				elif g != 0 and "QN" in g.pins:
+					g.pins["QN"].set_value(1-pat[name], True)
+
+					
+
+			self.evaluate(True)
+			cost = self.evaluate(False)
+
+			
+			for chain in self.scanchains:
+				l_si = ""
+				l_so = ""
+				for i in range(len(chain)):
+					sc = chain[len(chain)-i-1]
+					l_si += str(sc.pins["Q"].v1)
+					if sc.pins["D"].v2 == 1 or sc.pins["D"].v2 == 3:
+						l_so += "H"
+					elif sc.pins["D"].v2 == 0 or sc.pins["D"].v2 == 4:
+						l_so += "L"
+					else:
+						print("Don't care bits at SO after reshaping!")
+						l_so += "X"
+					
+					if i%1024==1023:
+						l_si += "\n"
+						l_so += "\n"
+				si.append(l_si)
+				so.append(l_so)
+			
+			for i in range(len(self.Pi)):
+				p = self.Pi[i]
+				if p.name == "clk" or p.name == "clock" or p.name == "ispd_clk":
+					pi_m += str(0)
+					if p.v1 == 1:
+						pi += "P"
+					else:
+						pi += str(0)
+					if True:
+						pi_c += "P"
+					else:
+						pi_c += str(0)
+
+				else:
+					pi += str(p.v1)
+					pi_m += str(p.v1)
+					pi_c += str(p.v2)
+				if i%1024==1023:
+					pi += "\n"
+					pi_m += "\n"
+					pi_c += "\n"
+				
+			for i in range(len(self.Po)):
+				p = self.Po[i]
+				if p.v2 == 1 or p.v2 == 3:
+					po += "H"
+				elif p.v2 == 0 or p.v2 == 4:
+					po += "L"
+				else:
+					print("Don't care bits at PO after reshaping!")
+					po += "X"
+
+				if i%1024==1023:
+					po += "\n"
+
+			for i in range(len(prefix)):
+				# Load
+			 	if i < len(self.scanchains):
+					f_ilp.write(prefix[i]+"\n")
+			 		if i == len(self.scanchains)-1:
+						f_ilp.write(si[i]+"\n; }\n")
+					else:
+						f_ilp.write(si[i]+"\n;\n")
+				
+				# Launch and Capture
+			 	elif i == len(self.scanchains):
+					#if self.design != "ldpc":
+					f_ilp.write("   Call \"multiclock_capture\" {\n")
+					f_ilp.write(prefix[i]+"\n"+pi_m+"; }\n")
+					f_ilp.write("   Call \"allclock_launch\" {\n")
+					f_ilp.write(prefix[i]+"\n"+pi+"; }\n")
+					f_ilp.write("   Call \"allclock_capture\" {\n")
+					f_ilp.write(prefix[i]+"\n"+pi_c+";\n")
+			 	elif i == len(self.scanchains)+1:
+					f_ilp.write(prefix[i]+"\n"+po+"\n; }\n")
+					f_ilp.write("   Ann {* fast_sequential *}\n")
+					if cnt == len(self.ilppat):
+						f_ilp.write("   \"end "+ str(cnt)+ " unload\": Call \"load_unload\" {\n")
+					else:
+						f_ilp.write("   \"pattern "+ str(cnt+1)+ "\": Call \"load_unload\" {\n")
+				# Unload
+				else:
+					f_ilp.write(prefix[i]+"\n")
+					f_ilp.write(so[i-len(self.scanchains)-2]+"\n;\n")
+		
+		f_ilp.write("  }\n}\n\n// Patterns reference")
+		f_ilp.close()
+
+		end = time.time()
+		print("End dumping STIL patterns\nCPU time: {0:.2f}s\n".format(end-begin))
+		return True
+
+	def dumpSASTIL(self, infile):
+		begin = time.time()
+		print("Start dumping STIL patterns")
+		f = open(infile, "r")
+		f_res = open(self.design+"/"+self.design+"_sa.stil", "w")
+		f_rworst = open(self.design+"/"+self.design+"_saworst.stil", "w")
+
+		first = False
+		prefix = []
+		for line in f:
+			f_res.write(line)
+			f_rworst.write(line)
+
+			if "pattern 0" in line:
+				first = True
+
+			if first and "\"=" in line:
+					idx1 = line.find("=")+1
+					prefix.append(line[:idx1])
+
+			if len(prefix) == 2*len(self.scanchains)+2 and ";" in line:
+					break
+	
+		f.close()
+		
 		# Dump reshaped pattern
 		worst_si = []
 		worst_so = []
@@ -1091,7 +1487,7 @@ class Circuit:
 			self.reset()
 
 			for name in pat:
-				if self.design == "ldpc" and "_v2" in name:
+				if "ldpc" in self.design and "_v2" in name:
 					idx = name.find("_v2")
 					n = name[:idx]
 					w = self.Wire[n]
@@ -1106,7 +1502,7 @@ class Circuit:
 					g.pins["QN"].set_value(1-pat[name], True)
 
 			self.evaluate(True)
-			self.evaluate(False)
+			cost = self.evaluate(False)
 			
 			for chain in self.scanchains:
 				l_si = ""
@@ -1230,18 +1626,11 @@ class Circuit:
 				f_rworst.write(prefix[i]+"\n")
 				f_rworst.write(worst_so[i-len(self.scanchains)-2]+"\n;\n")
 
-		f_pre.write("  }\n}\n\n// Patterns reference")
 		f_res.write("  }\n}\n\n// Patterns reference")
-		f_pworst.write("  }\n}\n\n// Patterns reference")
 		f_rworst.write("  }\n}\n\n// Patterns reference")
-		f_pre.close()
 		f_res.close()
-		f_pworst.close()
 		f_rworst.close()
 
 		end = time.time()
 		print("End dumping STIL patterns\nCPU time: {0:.2f}s\n".format(end-begin))
 		return True
-
-
-

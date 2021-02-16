@@ -244,7 +244,7 @@ class Minimize:
 			else:
 				dict1[pi.name] = pi.v1
 			
-			if self.cir.design == "ldpc":
+			if "ldpc" in self.cir.design:
 				if pi.v2 != 2:
 					name = pi.name + "_v2"
 					dict1[name] = pi.v2
@@ -297,14 +297,17 @@ class Minimize:
 		dict1[key] = 1-dict1[key]
 		return dict1
 
+	def prefer(self):
+		self.current_state = self.initstate()
+		self.cir.preferpat.append(self.current_state)	
+		return
+
 	def main(self):
 		self.current_state = self.initstate()
 		self.current_energy = self.cost_func(self.current_state)
 		self.best_state = self.current_state
 		self.best_energy = self.current_energy
 		init_energy = self.current_energy
-	
-		self.cir.preferpat.append(self.best_state)	
 	
 		while self.step < self.step_max and self.t >= self.t_min:
 
@@ -331,6 +334,10 @@ class Minimize:
 		self.cir.reshapepat.append(self.best_state)	
 		print("\nInitial energy: {0}, Best energy: {1}, Minimize: {2}, Acceptance rate: {3:.2f}".format(init_energy, self.best_energy, (init_energy>self.best_energy), float(self.accept)/float(self.step)))
 		filename = self.design + "/SA.rpt"
-		with open(filename, 'a') as fout:
-			fout.write("Initial energy: {0}, Best energy: {1}, Minimize: {2}, Acceptance rate: {3:.2f}\n".format(init_energy, self.best_energy, (init_energy>self.best_energy), float(self.accept)/float(self.step)))
+		if len(self.cir.reshapepat) == 1:
+			with open(filename, 'w') as fout:
+				fout.write("Initial energy: {0}, Best energy: {1}, Minimize: {2}, Acceptance rate: {3:.2f}\n".format(init_energy, self.best_energy, (init_energy>self.best_energy), float(self.accept)/float(self.step)))
+		else:
+			with open(filename, 'a') as fout:
+				fout.write("Initial energy: {0}, Best energy: {1}, Minimize: {2}, Acceptance rate: {3:.2f}\n".format(init_energy, self.best_energy, (init_energy>self.best_energy), float(self.accept)/float(self.step)))
 			

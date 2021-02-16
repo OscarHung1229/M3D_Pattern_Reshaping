@@ -1,4 +1,4 @@
-def dumpSTA(cir, prefer, pat, SDD):
+def dumpSTA(cir, infile, pat):
 	prefix = ""
 	if cir.design == "ldpc":
 		prefix = "/autofs/home/sh528/ldpc_tight/"
@@ -9,22 +9,29 @@ def dumpSTA(cir, prefer, pat, SDD):
 	elif cir.design == "leon3":
 		prefix = "/autofs/home/sh528/ITC2020/leon_v3/"
 	else:
-		print("Design " + cir.design + " not exists!")
-		assert(False)
+		prefix = "/autofs/home/sh528/M3Ddesigns/"+cir.design+"/"
 
 	filename = "/autofs/home/sh528/M3D_Pattern_Reshaping/" + cir.design + "/" + cir.design + "_"
 	report = ""
-	if prefer:
-		filename += "sta_prefer" + SDD + ".tcl"
-		report = "/autofs/home/sh528/M3D_Pattern_Reshaping/" + cir.design + "/prefer_timing" + SDD + ".rpt"
+
+
+	if "prefer" in infile:
+		filename += "sta_prefer.tcl"
+		report = "/autofs/home/sh528/M3D_Pattern_Reshaping/" + cir.design + "/prefer_timing.rpt"
+	elif "ilp" in infile:
+		filename += "sta_ilp.tcl"
+		report = "/autofs/home/sh528/M3D_Pattern_Reshaping/" + cir.design + "/ilp_timing.rpt"
+	elif "sa" in infile:
+		filename += "sta_sa.tcl"
+		report = "/autofs/home/sh528/M3D_Pattern_Reshaping/" + cir.design + "/sa_timing.rpt"
 	else:
-		filename += "sta_reshape" + SDD + ".tcl"
-		report = "/autofs/home/sh528/M3D_Pattern_Reshaping/" + cir.design + "/reshape_timing" + SDD + ".rpt"
+		filename += "sta.tcl"
+		report = "/autofs/home/sh528/M3D_Pattern_Reshaping/" + cir.design + "/timing.rpt"
 		
 
 	if pat==1:
 		with open(filename, "w") as f:
-			f.write("\nset target_library \"/autofs/home/sh528/nangate45nm/2d_db/NG45nm_tt_ecsm.db\"\n")
+			f.write("\nset target_library \"/autofs/home/sh528/test_itc/Nangate/Nangate.db\"\n")
 			f.write("set link_library \"* $target_library\"\n")
 			f.write("read_verilog " + prefix +  "die0.v\n")
 			f.write("read_verilog " + prefix +  "die1.v\n")
@@ -33,8 +40,16 @@ def dumpSTA(cir, prefer, pat, SDD):
 			f.write("link\n")	
 			f.write("source " + prefix + cir.design + ".sdc\n")
 		 	f.write("read_parasitic " + prefix + "top.spef\n")	
-			f.write("read_parasitic " + prefix + "die0_noOpt.spef -path Udie0\n")
-			f.write("read_parasitic " + prefix + "die1_noOpt.spef -path Udie1\n")
+		
+		if "GNN" in cir.design:
+			with open(filename, "a") as f:
+				f.write("read_parasitic " + prefix + "die0_noOpt.spef.gz -path Udie0\n")
+				f.write("read_parasitic " + prefix + "die1_noOpt.spef.gz -path Udie1\n")
+		else:
+			with open(filename, "a") as f:
+				f.write("read_parasitic " + prefix + "die0_noOpt.spef -path Udie0\n")
+				f.write("read_parasitic " + prefix + "die1_noOpt.spef -path Udie1\n")
+			
 	
 	with open(filename, "a\n") as f:
 		f.write("# Pattern" + str(pat) + "\n")

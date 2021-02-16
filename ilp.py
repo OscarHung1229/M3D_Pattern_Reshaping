@@ -235,8 +235,14 @@ def buildconstr(m,g,ite):
 		vCO = m.getVarByName(g.pins["CO"].name+it)
 
 		v1 = m.addVar(vtype=GRB.BINARY, name=g.name+"_v1"+it)
-		m.addGenConstrIndicator(v1, True, vA+vB, GRB.EQUAL, 1.0)
-		m.addGenConstrIndicator(vS, True, v1+vCI, GRB.EQUAL, 1.0)
+		m.addConstr(v1-vA-vB <= 0)
+		m.addConstr(v1-vA+vB >= 0)
+		m.addConstr(v1+vA-vB >= 0)
+		m.addConstr(v1+vA+vB <= 2)
+		m.addConstr(vS-v1-vCI <= 0)
+		m.addConstr(vS-v1+vCI >= 0)
+		m.addConstr(vS+v1-vCI >= 0)
+		m.addConstr(vS+v1+vCI <= 2)
 		v2 = m.addVar(vtype=GRB.BINARY, name=g.name+"_v2"+it)
 		m.addGenConstrOr(v2, (vA,vB))
 		v3 = m.addVar(vtype=GRB.BINARY, name=g.name+"_v3"+it)
@@ -249,13 +255,19 @@ def buildconstr(m,g,ite):
 		vB = m.getVarByName(g.pins["B"].name+it)
 		vA = m.getVarByName(g.pins["A"].name+it)
 		vZ = m.getVarByName(g.pins["Z"].name+it)
-		m.addGenConstrIndicator(vZ, True, vA+vB, GRB.EQUAL, 1.0)
+		m.addConstr(vZ-vA-vB <= 0)
+		m.addConstr(vZ-vA+vB >= 0)
+		m.addConstr(vZ+vA-vB >= 0)
+		m.addConstr(vZ+vA+vB <= 2)
 
 	elif g.gtype.startswith("XNOR"):
 		vB = m.getVarByName(g.pins["B"].name+it)
 		vA = m.getVarByName(g.pins["A"].name+it)
 		vZN = m.getVarByName(g.pins["ZN"].name+it)
-		m.addGenConstrIndicator(vZN, False, vA+vB, GRB.EQUAL, 1.0)
+		m.addConstr(1-vZN-vA-vB <= 0)
+		m.addConstr(1-vZN-vA+vB >= 0)
+		m.addConstr(1-vZN+vA-vB >= 0)
+		m.addConstr(1-vZN+vA+vB <= 2)
 
 	elif g.gtype.startswith("SDFF"):
 		if ite == 2:
@@ -299,13 +311,12 @@ def construct(cir):
 			var2 = m.getVarByName(n2)
 
 			if g == 0:
-				if wire.v1 != 2:
+				if wire.v1 != 2 and wire.v1 != 99:
 					m.addConstr(var1 == wire.v1)
-				if wire.v2 != 2:
+				if wire.v2 != 2 and wire.v2 != 99:
 					m.addConstr(var2 == wire.v2)
 				continue
 
-					
 			if wire.v1 == 2:
 				buildconstr(m,g,1)
 			elif wire.v1 == 1 or wire.v1 == 3:
@@ -324,7 +335,10 @@ def construct(cir):
 
 			if g.die == 0:
 				sw = m.addVar(vtype=GRB.BINARY, name=g.name+"_sw")
-				m.addGenConstrIndicator(sw, True, var1+var2, GRB.EQUAL, 1.0)
+				m.addConstr(sw-var1-var2 <= 0)
+				m.addConstr(sw-var1+var2 >= 0)
+				m.addConstr(sw+var1-var2 >= 0)
+				m.addConstr(sw+var1+var2 <= 2)
 				obj += len(wire.fanout)*sw
 				
 		print("Finish wire constraints")
@@ -332,8 +346,44 @@ def construct(cir):
 		# Set objective
 		m.setObjective(obj, GRB.MINIMIZE)
 
+		# Set parameters
+		m.setParam('MIPGap', 0.005)
+		m.setParam('TimeLimit', 3600)
+		m.setParam(GRB.Param.Threads, 10)
+
 		# Optimize model
 		m.optimize()
+		
+		if (m.status == GRB.OPTIMAL):
+			dict1 = {}
+			for wire in cir.Pi:
+				if wire.v1 == 2:
+					name = wire.name+"_1"
+					var = m.getVarByName(name)
+					dict1[wire.name] = int(var.x)
+				else:
+					dict1[wire.name] = wire.v1
+				
+				if wire.v2 != 2 and wire.v2 != wire.v1:
+					dict1[wire.name+"_v2"] = wire.v2
+
+			for chain in cir.scanchains:
+				for g in chain:
+					wire = g.pins["Q"]
+					if wire.v1 == 2:
+						name = wire.name+"_1"
+						var = m.getVarByName(name)
+						dict1[wire.name] = int(var.x)
+					else:
+						dict1[wire.name] = wire.v1
+			
+			cir.ilppat.append(dict1)
+			print('Obj: %g' % m.objVal)
+			return True
+		else:
+			return False
+					
+
 	
 		#for v in m.getVars():
 		#	print('%s %g' % (v.varName, v.x))
@@ -344,6 +394,8 @@ def construct(cir):
 	#	print('Error code ' + str(e.errno) + ': ' + str(e))
 	#	m.computeIIS()
 	#	m.write("model.ilp")
-	#
+	#	#return False
+	
 	#except AttributeError:
 	#	print('Encountered an attribute error')
+	#	#return False
